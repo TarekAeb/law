@@ -1,0 +1,10 @@
+algerian_laws_rag.db
+chroma_db/
+venv/
+__pycache__/
+*.pyc
+upload_db.py
+build_vector_db.py
+enable_fts.py
+records.jsonl
+streamlit.log
