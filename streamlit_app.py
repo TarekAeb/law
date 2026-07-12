@@ -27,18 +27,34 @@ except Exception:
 # Auto-Download Databases from Hugging Face if Missing
 # ---------------------------------------------------------
 from huggingface_hub import snapshot_download, hf_hub_download
+import shutil
 
-if not os.path.exists(DB_PATH) or not os.path.exists(CHROMA_DIR):
-    # We use st.cache_resource so it only runs once per server boot
+def is_db_valid():
+    # Check if DB file exists and is larger than a few KB (an empty sqlite db is around 0-8KB)
+    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) < 15000:
+        return False
+    # Check if Chroma directory exists and has files inside
+    if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
+        return False
+    return True
+
+if not is_db_valid():
     @st.cache_resource
     def download_databases():
         try:
+            # Clean up potentially broken empty files/folders first
+            if os.path.exists(DB_PATH):
+                os.remove(DB_PATH)
+            if os.path.exists(CHROMA_DIR):
+                shutil.rmtree(CHROMA_DIR)
+                
             print("Downloading algerian_laws_rag.db...")
             hf_hub_download(repo_id="tarekAeb/algerian-legal-db", repo_type="dataset", filename="algerian_laws_rag.db", local_dir=".")
             print("Downloading chroma_db...")
             snapshot_download(repo_id="tarekAeb/algerian-legal-db", repo_type="dataset", allow_patterns="chroma_db/*", local_dir=".")
             print("Downloads complete!")
         except Exception as e:
+            st.error(f"Error downloading from Hugging Face: {e}")
             print(f"Error downloading from Hugging Face: {e}")
             
     with st.spinner("Downloading legal databases (First run only, this might take a minute)..."):
