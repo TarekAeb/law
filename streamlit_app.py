@@ -67,8 +67,8 @@ def is_arabic(text):
 def render_result_text(text):
     direction = "rtl" if is_arabic(text) else "ltr"
     alignment = "right" if direction == "rtl" else "left"
-    html_text = text.replace('\n', '<br>')
-    st.markdown(f"<div dir='{direction}' style='text-align: {alignment}; font-family: Tahoma, Arial, sans-serif;'>{html_text}</div>", unsafe_allow_html=True)
+    # Wrapping with \n\n tells Streamlit to render the inner content as Markdown
+    st.markdown(f"<div dir='{direction}' style='text-align: {alignment}; font-family: Tahoma, Arial, sans-serif;'>\n\n{text}\n\n</div>", unsafe_allow_html=True)
 
 @st.cache_resource
 def load_rag_system():
@@ -167,27 +167,7 @@ def hybrid_search(query_str, vectorstore, k=5):
                 break
     return final_results
 
-def format_with_gemini(raw_text):
-    llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0.0)
-    prompt = f"""You are an expert legal editor. 
-I am providing you with an excerpt from an Algerian legal document. Because it was extracted automatically from a PDF, it might start or end in the middle of a sentence, and it may contain irrelevant noise.
-
-Your strict tasks:
-1. Format the text beautifully using Markdown (bold important terms, use bullet points if it's a list).
-2. Cleanly REMOVE any broken or incomplete sentences at the very beginning or the very end of the text so it reads perfectly.
-3. REMOVE any irrelevant PDF boilerplate, such as cover page text, journal headers, footers, page numbers, signatures, lists of government names, or random OCR noise. ONLY keep the substantive legal provisions.
-4. Keep the exact original language (Arabic or French). Do NOT translate.
-5. Do NOT add any extra commentary, do not answer questions, just output the cleaned up, formatted text.
-
-Raw Excerpt:
-{raw_text}
-"""
-    try:
-        response = llm.invoke([HumanMessage(content=prompt)])
-        return extract_text(response.content).strip()
-    except Exception:
-        return raw_text
-
+@st.cache_data(show_spinner=False)
 def generate_final_synthesis(query, formatted_results):
     llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", temperature=0.2)
     context = ""
@@ -239,17 +219,15 @@ if prompt := st.chat_input("E.g. What are the rules for money laundering?"):
     st.chat_message("user").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.spinner("Searching and formatting retrieved documents concurrently..."):
-        results = hybrid_search(prompt, vectorstore, k=5)
+    with st.spinner("Searching for relevant legal documents..."):
+        results = hybrid_search(prompt, vectorstore, k=4)
         
         formatted_results = []
         if results:
-            def process_result(res):
-                res["formatted_text"] = format_with_gemini(res["raw_text"])
-                return res
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                formatted_results = list(executor.map(process_result, results))
+            for res in results:
+                # Basic cleanup instead of expensive LLM formatting
+                res["formatted_text"] = res["raw_text"].strip()
+                formatted_results.append(res)
                 
     if not formatted_results:
         content = "No relevant legal texts found for this query."
